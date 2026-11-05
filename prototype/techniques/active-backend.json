@@ -1,0 +1,4 @@
+{
+  "backend": "crnn_transfer",
+  "artifact": "artifacts-crnn-transfer/classifier.pt"
+}

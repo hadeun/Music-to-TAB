@@ -1,0 +1,6 @@
+librosa==0.11.0
+gammatone==1.0.3
+scikit-learn>=1.6,<1.8
+torchvision
+joblib
+demucs==4.0.1

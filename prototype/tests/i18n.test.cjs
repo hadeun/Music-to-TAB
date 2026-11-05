@@ -1,0 +1,3 @@
+const test=require('node:test'),assert=require('node:assert/strict'),{detectLanguage}=require('../dist/i18n.js');
+test('Korean region or Seoul time zone starts Korean',()=>{assert.equal(detectLanguage(null,['en-US'],'Asia/Seoul'),'ko');assert.equal(detectLanguage(null,['en-KR'],'UTC'),'ko');assert.equal(detectLanguage(null,['ko-KR'],'UTC'),'ko');});
+test('explicit preference overrides regional default and other regions use English',()=>{assert.equal(detectLanguage('en',['ko-KR'],'Asia/Seoul'),'en');assert.equal(detectLanguage('ko',['en-US'],'UTC'),'ko');assert.equal(detectLanguage(null,['en-US'],'America/New_York'),'en');});

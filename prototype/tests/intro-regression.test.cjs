@@ -1,0 +1,7 @@
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+function score(file){const es=fs.readFileSync(file,'utf8').split('\n').filter(l=>l.startsWith('data:')).map(l=>JSON.parse(l.slice(5)));const starts=new Map(),notes=[];for(const e of es){if(e.type==='start')starts.set(e.index,e);if(e.type==='end')notes.push({...starts.get(e.start_event_index),end_time:e.end_time});}const text=fs.readFileSync('dist/app.js','utf8'),c={GuitarFingering:require('../dist/fingering.js'),OPEN:[64,59,55,50,45,40],clone:structuredClone,crypto:require('node:crypto')};vm.createContext(c);vm.runInContext(text.slice(text.indexOf('function muscriptorScore('),text.indexOf('function showStudio()')),c);return c.muscriptorScore(notes,{bpm:108,duration:55},es.find(e=>e.type==='transcription_complete'));}
+test('actual conditioned Mr Crowley intro reaches TAB without losing early timestamps',{skip:!fs.existsSync('test-output/crowley-intro-guitar.sse')},()=>{
+ const before=score('test-output/crowley-intro-auto.sse'),after=score('test-output/crowley-intro-guitar.sse');
+ assert.equal(before.parts.guitar.filter(n=>n.start_seconds>=6&&n.start_seconds<49).length,0);
+ const intro=after.parts.guitar.filter(n=>n.start_seconds>=6&&n.start_seconds<49);assert(intro.length>100);assert(after.parts.guitar[0].start_seconds<7);assert(after.parts.guitar.every(n=>n.pitch===[64,59,55,50,45,40][n.string-1]+n.fret));console.log('Intro notes assigned to TAB:',intro.length,'; first:',after.parts.guitar[0].start_seconds);
+});
