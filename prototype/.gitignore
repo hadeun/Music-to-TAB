@@ -16,3 +16,7 @@ techniques/artifacts-crnn/
 techniques/artifacts-crnn-transfer/
 techniques/separation-models/
 techniques/separated-guitar-cache/
+techniques/tab-pitch-data/*
+!techniques/tab-pitch-data/expanded-technique/
+techniques/tab-pitch-data/expanded-technique/*
+!techniques/tab-pitch-data/expanded-technique/classifier.pt

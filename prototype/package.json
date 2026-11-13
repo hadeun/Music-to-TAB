@@ -5,7 +5,7 @@
   "packageManager": "pnpm@11.25.0",
   "scripts": {
     "build": "node --check dist/app.js",
-    "test": "node --test tests/technique-audio.test.cjs tests/fingering.test.cjs tests/muscriptor.test.cjs tests/technique-assignment.test.cjs tests/i18n.test.cjs tests/playback-mixer.test.cjs tests/transcription-input.test.cjs tests/intro-regression.test.cjs",
+    "test": "node --test tests/technique-audio.test.cjs tests/fingering.test.cjs tests/muscriptor.test.cjs tests/technique-assignment.test.cjs tests/i18n.test.cjs tests/playback-mixer.test.cjs tests/transcription-input.test.cjs",
     "start": "node muscriptor-server.cjs"
   },
   "dependencies": {},

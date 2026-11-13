@@ -1,7 +1,14 @@
 // Automatic estimates are editable; source events and revision zero are preserved.
 const techniqueButton=document.createElement('button');
 techniqueButton.className='button';techniqueButton.textContent='Analyze techniques · experimental';
+techniqueButton.hidden=true;
 document.querySelector('.score-toolbar').before(techniqueButton);
+fetch('/api/techniques/health').then(async response=>{
+ if(response.ok){
+  const status=await response.json();
+  techniqueButton.hidden=!status.backend||status.backend==='disabled';
+ }
+}).catch(()=>{});
 const techniqueSymbols=TechniqueAssignment.symbols;
 function selectedTechniqueLabel(note){
  const alternatives=note.techniqueCandidates||[];
@@ -17,7 +24,7 @@ reviewTechniques.onclick=()=>showTechniqueCandidates(project);
 function showTechniqueCandidates(target,page=0){
  const result=target.techniqueAnalysis;if(!result)return toast('Analyze this recording first.');
  const all=target.parts.guitar.filter(n=>n.techniqueCandidates?.length),notes=all.slice(page*30,(page+1)*30);
- modal('Edit technique candidates','<p>Only techniques scoring at least 70% are applied automatically. Lower-scoring candidates remain available for manual selection. Scores are estimates from audio windows, not guarantees about individual notes.</p><div style="max-height:420px;overflow:auto">'+notes.map((n,i)=>{
+ modal('Edit technique candidates','<p>Only techniques scoring at least 70% are applied automatically. Lower-scoring candidates remain available for manual selection.</p><div style="max-height:420px;overflow:auto">'+notes.map((n,i)=>{
   const alternatives=n.techniqueCandidates,selectedLabel=selectedTechniqueLabel(n);
   return '<div class="technique-review-row"><p><b>'+time(n.start_tick/(target.bpm*8))+'</b> · '+(window.t?window.t('String'):'String')+' '+n.string+' · '+(window.t?window.t('Fret'):'Fret')+' '+n.fret+'</p><select data-tech-choice="'+i+'" aria-label="Technique"><option value="" '+(!selectedLabel?'selected':'')+'>'+(window.t?window.t('None'):'None')+'</option>'+alternatives.map(c=>'<option value="'+c.label+'" '+(c.label===selectedLabel?'selected':'')+'>'+(window.t?window.t(c.label):c.label)+' · '+(100*c.probability).toFixed(1)+'%</option>').join('')+'</select><button class="button" data-tech-confirm="'+i+'">Apply change</button></div>';
  }).join('')+'</div><div class="candidate-pages"><button class="button" id="techPrev" '+(!page?'disabled':'')+'>Previous</button><span>'+(page+1)+' / '+Math.max(1,Math.ceil(all.length/30))+'</span><button class="button" id="techNext" '+((page+1)*30>=all.length?'disabled':'')+'>Next</button></div>');
@@ -38,12 +45,21 @@ techniqueButton.onclick=async()=>{
  try{
   const health=await fetch('/api/techniques/health');const status=await health.json();
   if(!health.ok||!status.available)throw Error(status.detail||'The technique classifier has not been trained yet.');
+  let notes;
+  if(status.requires_muscriptor_notes){
+   const delay=target.beatGrid?.onset_delay||0;
+   notes=(target.rawEvents||[]).filter(n=>/guitar|distortion|overdriven/i.test(n.instrument))
+    .map(n=>[Math.max(0,n.start_time-delay),n.end_time-delay,n.pitch])
+    .filter(([start,end,pitch])=>Number.isFinite(start)&&Number.isFinite(end)&&end>start&&Number.isInteger(pitch));
+   if(!notes.length)throw Error(window.t?window.t('Transcribe with Muscriptor first.'): 'Transcribe with Muscriptor first.');
+  }
   const blob=await audioRecord(target.id,'get');
   if(!blob)throw Error('Original audio is missing. Re-upload the recording.');
   const ac=new AudioContext({sampleRate:44100});let audio;try{audio=await ac.decodeAudioData(await blob.arrayBuffer())}finally{await ac.close()}
   // Preserve stereo and full-band audio for Demucs; downmix only after guitar extraction.
   const buf=TechniqueAudio.wav(audio);
   techniqueButton.textContent='Separating guitar and analyzing techniques…';const form=new FormData();form.append('file',new Blob([buf],{type:'audio/wav'}),'audio.wav');
+  if(notes)form.append('notes',JSON.stringify(notes));
   const response=await fetch('/api/techniques/analyze',{method:'POST',body:form}),result=await response.json();if(!response.ok)throw Error(result.detail||'Technique analysis failed.');
   if(project!==target)return;
   const stored=JSON.parse(localStorage.getItem(KEY)||'null')?.projects.find(p=>p.id===target.id);

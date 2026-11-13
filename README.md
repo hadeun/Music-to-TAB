@@ -27,7 +27,8 @@ flowchart LR
     C --> D[편집 가능한 TAB]
     A --> E[주법 분석 요청]
     E --> F[HTDemucs 6s 기타 분리]
-    F --> G[guitar 스템만 CRNN에 입력]
+    B --> G[기타 음높이 변경 구간별 CRNN 추론]
+    F --> G
     G --> H[시간 구간별 주법 점수]
     H --> I[음표 시각에 연결 및 자동 표기]
     I --> D
@@ -61,13 +62,13 @@ uv pip install --python $py muscriptor==0.4.0 -r techniques/requirements.txt req
 
 ### 2. 주법 분석용 모델 준비
 
-음표 채보만 사용한다면 이 단계와 주법 분석 서버는 생략할 수 있습니다. 주법 분석에는 공식 기타 분리 가중치와 이 프로젝트에서 학습한 CRNN 파일이 모두 필요합니다. 현재 주법 분석용 데이터와 가중치는 `prototype/.gitignore`에서 제외합니다.
+음표 채보만 사용한다면 이 단계와 주법 분석 서버는 생략할 수 있습니다. 주법 분석에는 공식 기타 분리 가중치와 이 프로젝트에서 학습한 CRNN 파일이 모두 필요합니다.
 
 ```powershell
 & $py techniques/download_separator.py
 ```
 
-기존에 생성한 `techniques/artifacts-crnn-transfer/classifier.pt`가 없다면 아래 **주법 모델 재학습** 절차로 생성합니다. 활성 모델 경로는 `techniques/active-backend.json`에 설정되어 있습니다. ResNet50 사전학습 가중치는 로컬 파일이 없으면 최초 사용 시 torchvision이 가져옵니다.
+공개본에 포함된 `techniques/tab-pitch-data/expanded-technique/classifier.pt`를 사용합니다. 활성 모델 경로는 `techniques/active-backend.json`에 있습니다.
 
 ### 3. 서버 실행
 
@@ -84,42 +85,12 @@ uv pip install --python $py muscriptor==0.4.0 -r techniques/requirements.txt req
 node muscriptor-server.cjs
 ```
 
-[로컬 웹 화면](http://127.0.0.1:4181/)에서 파일을 업로드하고 채보한 뒤, 필요하면 **주법 분석**을 실행합니다. 첫 분석에는 기타 분리 시간이 추가됩니다. 혼자 연주한 기타 녹음은 업로드 시 **기타 단독**을 선택하면 MuScriptor에 기타 악기 조건이 전달됩니다.
-
-## 주법 모델 재학습
-
-현재 모델은 MFCC와 감마톤 특징을 **고정된 ResNet50**으로 추출하고, 2초 구간의 시간 순서를 유지한 특징을 **양방향 GRU와 분류기**에 전달합니다. 기존 Guitar Style 녹음 549개와 Guitar-TECHS P1·P2에서 자른 구간 1,676개, 총 2,225개 항목을 사용했습니다. 일반 단음은 학습에서 제외했습니다.
-
-다음 명령은 `prototype/`에서 실행합니다. `technique-data`가 없는 새 설치에서만 첫 세 Git 명령을 실행합니다. 이 체크아웃은 WAV 목록을 얻기 위한 것이며, 전체 데이터셋 파일을 작업 폴더에 풀지 않습니다.
-
-```powershell
-git clone --filter=blob:none --no-checkout https://github.com/magcil/guitar_style_dataset.git technique-data
-git -C technique-data fetch origin eb27d7b0bd7172e7ce31b5ec40ebd4700b7651d2
-git -C technique-data update-ref HEAD eb27d7b0bd7172e7ce31b5ec40ebd4700b7651d2
-
-& $py techniques/download_data.py
-& $py techniques/prepare.py
-& $py techniques/train.py techniques/manifest.json
-& $py techniques/download_guitar_techs.py
-& $py techniques/prepare_guitar_techs.py
-& $py techniques/train_combined.py
-& $py techniques/train_crnn_transfer.py
-```
-
-처음 두 학습 스크립트는 기존 SVM 기준 모델과 통합 데이터의 검증·학습 목록을 만듭니다. 마지막 스크립트가 활성 CRNN용 가중치를 생성합니다. 학습·평가는 같은 연주의 DI·앰프 버전을 함께 묶고, Guitar-TECHS 연주자와 기존 연습 패턴을 분리합니다.
-
-| 평가 범위 | 기존 CNN 특징 + SVM | 현재 ResNet50 + BiGRU |
-| --- | ---: | ---: |
-| 전체 macro F1 | 73.19% | 73.27% |
-| 기존 데이터 macro F1 | 81.69% | 82.42% |
-| Guitar-TECHS 연주자 분리 macro F1 | 65.82% | 63.73% |
-
-위 수치는 동일한 평가 분할의 **녹음·구간 분류** 결과입니다. 전체 믹스에서 분리한 기타나 TAB 개별 음표에 대한 정확도는 아닙니다. 두 방식은 입력 구간 처리에도 차이가 있습니다.
+[로컬 웹 화면](http://127.0.0.1:4181/)에서 파일을 업로드하고 채보한 뒤, 필요하면 **주법 분석**을 실행합니다. 첫 분석에는 기타 분리 시간이 추가됩니다. 혼자 연주한 기타 녹음은 업로드 시 **기타 단독**을 선택하면 MuScriptor에 기타 악기 조건이 전달됩니다. **악기 직접 선택**에서는 기타 종류와 함께 베이스, 드럼 등 구성 악기를 골라 채보 범위를 지정할 수 있습니다.
 
 ## 현재 한계
 
 - 채보와 운지는 추정 결과입니다. 누락된 음과 연주하기 어려운 운지가 생길 수 있습니다. 마디는 선택한 박자표와 고정 120 BPM 표시 기준을 사용하며 원곡의 템포를 검출한 값은 아닙니다.
-- 주법 모델은 2초 구간에서 한 가지 주법을 분류합니다. 벤딩과 비브라토가 동시에 일어나는 구간, 정확한 주법 경계, 벤딩 도착음의 자동 추정은 아직 검증되지 않았습니다.
+- 주법 모델은 기타 음높이 변경 구간에서 10가지 후보에 점수를 매깁니다. 벤딩과 비브라토가 동시에 일어나는 구간, 정확한 주법 경계, 벤딩 도착음의 자동 추정은 아직 검증되지 않았습니다.
 - 70%는 분류 점수에 대한 표기 기준입니다. 실제 정답률 70%를 뜻하지 않습니다. 기타 스템에 다른 악기가 남거나 기타 소리가 손실될 수도 있습니다.
 - 리드·리듬 기타 분리, TuxGuitar 내보내기, 계정 동기화, 외부 음원 링크 입력은 현재 제공하지 않습니다.
 
@@ -135,8 +106,8 @@ pnpm test
 | --- | --- |
 | [`prototype/dist/`](prototype/dist/) | 현재 브라우저 화면과 TAB 편집·재생 로직 |
 | [`prototype/muscriptor-server.cjs`](prototype/muscriptor-server.cjs) | 웹 서버와 로컬 분석 요청 전달 |
-| [`prototype/techniques/`](prototype/techniques/) | 학습, 기타 분리, 주법 추론 및 검증 코드 |
-| [CRNN 설계](prototype/techniques/CRNN.md) · [기타 분리](prototype/techniques/GUITAR_SEPARATION.md) | 모델 구조, 입력 처리와 검증 범위 |
+| [`prototype/techniques/`](prototype/techniques/) | 기타 분리, 주법 추론 및 검증 코드 |
+| [기타 분리](prototype/techniques/GUITAR_SEPARATION.md) | 모델 구조, 입력 처리와 검증 범위 |
 | [제품 범위](PRODUCT_SCOPE.md) · [설계 문서](ARCHITECTURE.md) | 제품 구상 및 이전 설계 기록 |
 
 ## 모델·데이터 출처
@@ -144,6 +115,4 @@ pnpm test
 - [MuScriptor Medium](https://huggingface.co/MuScriptor/muscriptor-medium): Mirelo·Kyutai. 가중치는 CC BY-NC 4.0과 모델 페이지의 별도 이용 조건을 따릅니다.
 - [Demucs](https://github.com/facebookresearch/demucs): HTDemucs 6s 기타 분리. [Guitar Style Dataset](https://github.com/magcil/guitar_style_dataset)과 [Guitar-TECHS](https://zenodo.org/records/14963133): 주법 모델 학습 자료. 데이터별 출처와 이용 조건은 각 배포처를 확인하세요.
 - 초기 주법 분류 실험은 [SpectroFusionNet 논문](https://doi.org/10.1038/s41598-025-00287-w)의 특징 결합 방식을 참고한 독립 구현입니다.
-
-
-프로젝트 소스의 라이선스는 [LICENSE](LICENSE)를 참고하세요. 외부 모델과 데이터에는 각각의 이용 조건이 적용됩니다.
+- 공개 주법 가중치의 추가 자료 출처는 [EGSet12 — Pedroza 외](https://zenodo.org/records/11406378), [GuitarSet — Xi 외](https://zenodo.org/records/3371780), [EG-IPT — Fiorini 외](https://zenodo.org/records/15205644)입니다. 각 데이터는 CC BY 4.0이며, 가중치는 해당 자료의 일부를 가공해 학습한 결과입니다.

@@ -11,11 +11,11 @@ test('Upload starts decoding without the removed BPM input and recovers on decod
   '#dropzone':{},'#uploadForm':{},'#uploadTitle':{value:'Song'},'#uploadMeter':{value:'4'},'#uploadError':error,'#newProject':{},'#uploadTop':{}
  };
  let decoded=false;
- const uploadContext={pause(){},modal(){},crypto:require('node:crypto'),$:selector=>elements[selector],
+ const uploadContext={pause(){},modal(){},window:{},TranscriptionInput:require('../dist/transcription-input.js'),crypto:require('node:crypto'),$:selector=>elements[selector],
   AudioContext:class{async decodeAudioData(){decoded=true;throw Error('Invalid audio fixture');}async close(){}},toast(){}};
  vm.createContext(uploadContext);
  vm.runInContext(text.slice(text.indexOf('function showUpload()'),text.indexOf('async function startConversion(')),uploadContext);
  uploadContext.showUpload();
- await elements['#uploadForm'].onsubmit({preventDefault(){},target:{querySelector:()=>button}});
+ await elements['#uploadForm'].onsubmit({preventDefault(){},target:{querySelector:()=>button,querySelectorAll:()=>[]}});
  assert.equal(decoded,true);assert.equal(error.textContent,'Invalid audio fixture');assert.equal(button.disabled,false);
 });

@@ -2,7 +2,7 @@
 import io,json,threading
 from pathlib import Path
 import joblib,librosa,numpy as np,soundfile as sf
-from fastapi import FastAPI,UploadFile,File,HTTPException
+from fastapi import FastAPI,UploadFile,File,Form,HTTPException
 from core import Extractor,windows,SR,CONFIG
 from guitar_separation import GuitarSeparator,CHECKPOINT
 
@@ -11,12 +11,14 @@ artifact=Path(__file__).parent/'artifacts/classifier.joblib'
 lock=threading.Lock();bundle=None;extractor=None;loaded_key=None
 backend_config=Path(__file__).parent/'active-backend.json'
 separator=GuitarSeparator()
+DISABLED_DETAIL='Automatic technique analysis is turned off.'
 
 def backend_selection():
     if not backend_config.exists():return 'svm',artifact
     settings=json.loads(backend_config.read_text(encoding='utf-8'))
     kind=settings.get('backend')
-    if kind not in {'svm','crnn','crnn_transfer'}:raise ValueError('Unsupported technique backend')
+    if kind=='disabled':return kind,None
+    if kind not in {'svm','crnn','crnn_transfer','tab_pitch'}:raise ValueError('Unsupported technique backend')
     root=Path(__file__).resolve().parent
     path=(root/settings['artifact']).resolve()
     if not path.is_relative_to(root):raise ValueError('Technique artifact must stay inside the local model directory')
@@ -26,15 +28,21 @@ def backend_selection():
 def health():
     try:kind,path=backend_selection()
     except (ValueError,KeyError):return {'available':False,'detail':'Invalid local technique backend configuration'}
+    if kind=='disabled':return {'available':False,'backend':kind,'detail':DISABLED_DETAIL}
+    if kind=='tab_pitch':
+        return {'available':path.exists() and CHECKPOINT.exists(),'backend':kind,
+                'model':'TAB pitch-span CNN-BiGRU CRNN','requires_muscriptor_notes':True,
+                'separation':{'model':'htdemucs_6s','stem':'guitar','available':CHECKPOINT.exists()}}
     return {'available':path.exists() and CHECKPOINT.exists(),'classifier_available':path.exists(),'backend':kind,'model':'CNN-BiGRU CRNN' if kind!='svm' else 'SpectroFusionNet-inspired reproduction',
      'separation':{'model':'htdemucs_6s','stem':'guitar','available':CHECKPOINT.exists()},
      'context_seconds':2,'validated_scope':'dataset clips only','unsupported':['pick_scrape','up_down_pick_direction','bend_amount','simultaneous_techniques']}
 
 @app.post('/analyze')
-def analyze(file:UploadFile=File(...)):
+def analyze(file:UploadFile=File(...),notes:str|None=Form(None)):
     global bundle,extractor,loaded_key
     try:kind,path=backend_selection()
     except (ValueError,KeyError):raise HTTPException(503,'Invalid local technique backend configuration')
+    if kind=='disabled':raise HTTPException(503,DISABLED_DETAIL)
     if not path.exists():raise HTTPException(503,'Technique classifier has not been trained.')
     if not lock.acquire(blocking=False):raise HTTPException(409,'Technique analysis is busy.')
     try:
@@ -44,11 +52,22 @@ def analyze(file:UploadFile=File(...)):
         except Exception:raise HTTPException(400,'Could not decode audio')
         if len(y)/sr>300:raise HTTPException(413,'Audio exceeds 5 minutes')
         if not y.size or not np.isfinite(y).all():raise HTTPException(400,'Empty or invalid audio')
+        if kind=='tab_pitch':
+            from tab_pitch_inference import MODEL_ID,Predictor,spans_from_notes
+            try:spans=spans_from_notes(notes,len(y)/sr)
+            except (ValueError,OverflowError) as error:raise HTTPException(400,str(error))
         try:y,sr,separation=separator.separate(y,sr,content)
         except (ValueError,RuntimeError,ImportError) as error:raise HTTPException(503,f'Guitar separation failed; original mix was not analyzed. {error}')
         y=y.mean(axis=1)
-        if sr!=SR:y=librosa.resample(y,orig_sr=sr,target_sr=SR)
         key=(kind,str(path.resolve()),path.stat().st_mtime_ns)
+        if kind=='tab_pitch':
+            if bundle is None or loaded_key!=key:
+                bundle=Predictor(path);extractor=None;loaded_key=key
+            return {'model':MODEL_ID,'architecture':'crnn','backend':kind,
+                    'probability_method':'uncalibrated_sigmoid','candidates':bundle.predict(y,sr,spans),
+                    'automatic_note_assignment':True,'input_source':'separated_guitar','separation':separation,
+                    'warning':'Experimental pitch-span predictions. Mixed-song and ordinary playing accuracy is unverified.'}
+        if sr!=SR:y=librosa.resample(y,orig_sr=sr,target_sr=SR)
         if bundle is None or loaded_key!=key:
             if kind!='svm':
                 if kind=='crnn_transfer':
@@ -81,4 +100,6 @@ def analyze(file:UploadFile=File(...)):
 
 if __name__=='__main__':
     import uvicorn
+    import torch
+    torch.set_num_threads(4)
     uvicorn.run(app,host='127.0.0.1',port=8224)

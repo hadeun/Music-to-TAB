@@ -1,4 +1,4 @@
 {
-  "backend": "crnn_transfer",
-  "artifact": "artifacts-crnn-transfer/classifier.pt"
+  "backend": "tab_pitch",
+  "artifact": "tab-pitch-data/expanded-technique/classifier.pt"
 }
